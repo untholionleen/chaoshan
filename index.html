@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer"> <!-- 解决豆瓣海报图片防盗链不显示的问题 -->
+    <title>潮汕文艺作品展览网</title>
+    
+    <!-- 1. 引入正确的 CSS 与 JS 依赖 -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.0/DPlayer.min.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dplayer/1.27.0/DPlayer.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --border-color: #30363d;
+            --accent-color: #f0883e;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 20px; flex: 1; width: 100%; }
+
+        header {
+            text-align: center;
+            padding: 30px 0 20px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 30px;
+        }
+        header h1 { font-size: 2.2rem; color: var(--accent-color); margin-bottom: 10px; letter-spacing: 1px; }
+        header p { color: var(--text-secondary); font-size: 1rem; }
+
+        /* 1. 免责声明弹窗/遮罩 */
+        #disclaimer-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(13, 17, 23, 0.95);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .disclaimer-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-width: 650px;
+            width: 100%;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+        }
+        .disclaimer-card h2 { color: var(--accent-color); margin-bottom: 15px; font-size: 1.4rem; text-align: center; }
+        .disclaimer-content {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            max-height: 260px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .disclaimer-content p { margin-bottom: 10px; }
+        .disclaimer-content ul { padding-left: 20px; margin-bottom: 10px; }
+        
+        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 0.95rem; cursor: pointer; }
+        .checkbox-group input { width: 18px; height: 18px; accent-color: var(--accent-color); cursor: pointer; }
+        
+        .btn-enter {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent-color);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.3s, background 0.3s;
+        }
+        .btn-enter:disabled { background: #30363d; cursor: not-allowed; opacity: 0.6; }
+
+        /* 2. 主内容区（未签署前隐藏） */
+        #app-content { display: none; }
+
+        /* 电影列表视图 */
+        .film-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+        .film-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .film-card:hover { transform: translateY(-5px); border-color: var(--accent-color); }
+        .film-card img { width: 100%; height: 380px; object-fit: cover; }
+        .film-card-body { padding: 18px; }
+        .film-card-body h3 { font-size: 1.2rem; color: var(--text-primary); margin-bottom: 8px; }
+        .film-card-body p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; }
+
+        /* 电影独立详情与播放视图 */
+        #detail-view { display: none; }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: border-color 0.2s;
+        }
+        .back-btn:hover { border-color: var(--accent-color); color: var(--accent-color); }
+        
+        #player-box { width: 100%; height: 520px; background: #000; border-radius: 10px; overflow: hidden; margin-bottom: 25px; }
+
+        .movie-info-panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 25px;
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 25px;
+        }
+        .poster-wrapper img { width: 100%; border-radius: 8px; border: 1px solid var(--border-color); }
+        .info-wrapper h2 { font-size: 1.6rem; color: var(--accent-color); margin-bottom: 12px; }
+        .info-meta { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; }
+        .info-desc { font-size: 0.95rem; color: #c9d1d9; margin-bottom: 20px; line-height: 1.7; }
+        
+        .version-selector { margin-bottom: 20px; }
+        .version-selector h4 { font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 10px; }
+        .version-btn {
+            padding: 8px 16px;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-right: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .version-btn.active { background: var(--accent-color); border-color: var(--accent-color); color: #fff; }
+
+        /* 底部版权 */
+        footer {
+            text-align: center;
+            padding: 25px;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 40px;
+            background: var(--card-bg);
+        }
+        footer a { color: var(--accent-color); text-decoration: none; }
+
+        @media (max-width: 768px) {
+            #player-box { height: 260px; }
+            .movie-info-panel { grid-template-columns: 1fr; }
+            .poster-wrapper { text-align: center; }
+            .poster-wrapper img { max-width: 200px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 1. 强制免责声明签署弹窗 -->
+<div id="disclaimer-overlay">
+    <div class="disclaimer-card">
+        <h2>公益展映与版权免责声明</h2>
+        <div class="disclaimer-content">
+            <p><strong>尊敬的观影者，欢迎来到潮汕文艺作品展览网：</strong></p>
+            <p>本平台系学习通《从电影作品中认识潮汕文化》课程的附属网站，在您进入本站观影前，请务必仔细阅读并理解以下声明条款：</p>
+            <ul>
+                <li><strong>版权归属声明：</strong>本站播放的所有文艺作品均为国家公开许可展映作品。影片著作权、版权及收益权完全归原版权方、出品方及合法权利人所有。</li>
+                <li><strong>无版权保护与服务说明：</strong>本站仅作为网络视频流技术播放与学术解析界面，<strong>本站不提供任何版权保护、版权出让或版权授权服务</strong>。</li>
+                <li><strong>公益无商业化承诺：</strong>本站为公益运营，不包含任何商业广告、付费观影、赞助或变现行为，不具备任何商业价值。</li>
+                <li><strong>使用者合规承诺：</strong>观影者仅限在线学习与学术交流使用，不得将本站资源进行下载、二次销售、商业放映或用于任何违法传播。本站仅承担网站前端技术搭建与维护职责。</li>
+            </ul>
+        </div>
+        <label class="checkbox-group">
+            <input type="checkbox" id="agree-check" onchange="toggleEnterBtn()">
+            <span>我已阅读并完全同意上述版权免责声明与公益合规条款</span>
+        </label>
+        <button id="enter-btn" class="btn-enter" disabled onclick="acceptDisclaimer()">进入平台观影</button>
+    </div>
+</div>
+
+<!-- 2. 主页面内容 -->
+<div class="container">
+    <header>
+        <h1>潮汕文艺作品展览网</h1>
+        <p>学术 · 解析 · 公益</p>
+    </header>
+
+    <div id="app-content">
+        <!-- 视图 A：电影网格列表 -->
+        <div id="catalog-view">
+            <h2 style="font-size: 1.2rem; margin-bottom: 20px; color: var(--text-secondary);">请选择展映影片：</h2>
+            <div class="film-grid" id="film-grid-box"></div>
+        </div>
+
+        <!-- 视图 B：独立电影播放与详情页 -->
+        <div id="detail-view">
+            <button class="back-btn" onclick="showCatalog()">&larr; 返回影片列表</button>
+
+            <!-- 顶部视频播放器 -->
+            <div id="player-box"></div>
+
+            <!-- 下方电影海报、演员及详细介绍 -->
+            <div class="movie-info-panel">
+                <div class="poster-wrapper">
+                    <img id="movie-poster" src="" alt="电影海报">
+                </div>
+                <div class="info-wrapper">
+                    <h2 id="movie-title">电影名称</h2>
+                    <div class="info-meta">
+                        <span id="movie-director">导演：--</span>
+                        <span id="movie-cast">类型：--</span>
+                    </div>
+
+                    <!-- 版本/选集切换 -->
+                    <div class="version-selector">
+                        <h4>播放清晰度 / 切换版本：</h4>
+                        <div id="version-btn-group"></div>
+                    </div>
+
+                    <div class="info-desc">
+                        <h4 style="color: var(--text-primary); margin-bottom: 8px;">影片简介与文化背景：</h4>
+                        <p id="movie-description">剧情与背景加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. 底部版权与技术支持信息 -->
+<footer>
+    <p>版权所有 &copy; 2026 Untholion Leen（<a href="https://mooc1-api.chaoxing.com/mooc-ans/course/portal/KUHnjwNCOBRa0KXu28sdUw==" target="_blank">学习通官网</a>）. All Rights Reserved.</p>
+    <p style="margin-top: 6px; color: #484f58;">
+        技术支持：Gemini &nbsp;  &nbsp; <a href="https://untholionleen.github.io" rel="noopener">GitHub</a>
+    </p>
+</footer>
+
+<script>
+    // 电影数据配置文件（修改了双引号引用的语法错误）
+    const moviesData = [
+        {
+            id: "movie-1",
+            title: "给阿嬷的情书（2026）",
+            director: '<a href="https://www.douban.com/personage/30276772/" target="_blank" style="color:var(--accent-color);">蓝春鸿</a>',
+            cast: "剧情 / 家庭",
+            poster: "https://img.remit.ee/i/6EHP2oshyMEA", // 已替换为常规海报链接或占位图
+            description: "潮汕阿嬷叶淑柔一直守着平淡的日子，安享晚年。孙子晓伟因债务缠身，瞒着家人远赴泰国，寻找传闻中的亿万富豪阿公郑木生。然而，晓伟最后却带回了一个震惊整个家族的消息：阿公早已不在人世，那个与阿嬷一直在书信中谈情说爱的，竟是一个陌生人。随着晓伟的调查，一段隐藏了半世纪的感情赫然袭来，击中了阿嬷的心。",
+            sources: [
+                { name: "潮语版（潮汕话版）", url: "https://vip.dytt-network.com/20260901/39378_c9181c54/index.m3u8" },
+                { name: "国语版（普通话版）", url: "https://vip.dytt-network.com/20260831/39120_6bd22a86/index.m3u8" }
+            ]
+        },
+        {
+            id: "movie-2",
+            title: "夏雨来（2025）",
+            director: "杨清希",
+            cast: "剧情 / 喜剧",
+            poster: "https://img.remit.ee/i/r5RFiESOMaYQ",
+            description: "清朝末年，从不败诉的潮汕第一鬼才状师夏雨来一生都在行侠仗义，但因其“夏狐狸”式的行事作风，屡屡与理想成为大清首位女状师的女儿夏来碧产生矛盾。\n彼时外国资本势力强势入侵潮汕商业市场，在一连串啼笑皆非的民间案件和商战后，夏家父女逐渐发现到外国势力背后的可怕阴谋。此时，女儿却被污蔑为杀人放火的凶手，父亲为此站上公堂以唇枪舌剑对抗奸商恶官。最后，父女同心，团结潮汕百姓，展开了“胶己人”与外敌的殊死对决……",
+            sources: [
+                { name: "潮语版（潮汕话版）", url: "https://cache.0567890.xyz:4433/Cache/youku/aadba39457208d8660c6873d605ebfdf.m3u8?vkey=3863313242514e524146565455564653565134434167705158415544567731535841634544674e53564131624277414e41314148517a73734a79347a" }
+            ]
+        }
+    ];
+
+    let dp = null;
+    let currentMovie = null;
+
+    // 免责声明勾选控制
+    function toggleEnterBtn() {
+        const checked = document.getElementById('agree-check').checked;
+        document.getElementById('enter-btn').disabled = !checked;
+    }
+
+    // 接受声明进入网站
+    function acceptDisclaimer() {
+        document.getElementById('disclaimer-overlay').style.display = 'none';
+        document.getElementById('app-content').style.display = 'block';
+        renderCatalog();
+    }
+
+    // 渲染电影网格列表
+    function renderCatalog() {
+        const box = document.getElementById('film-grid-box');
+        box.innerHTML = '';
+        moviesData.forEach(movie => {
+            const card = document.createElement('div');
+            card.className = 'film-card';
+            card.onclick = () => openMovieDetail(movie.id);
+            card.innerHTML = `
+                <img src="${movie.poster}" alt="${movie.title}" onerror="this.src='https://via.placeholder.com/300x400?text=Poster'">
+                <div class="film-card-body">
+                    <h3>${movie.title}</h3>
+                    <p>${movie.description.substring(0, 45)}...</p>
+                </div>
+            `;
+            box.appendChild(card);
+        });
+    }
+
+    // 打开独立电影播放与详情页
+    function openMovieDetail(movieId) {
+        currentMovie = moviesData.find(m => m.id === movieId);
+        if (!currentMovie) return;
+
+        document.getElementById('catalog-view').style.display = 'none';
+        document.getElementById('detail-view').style.display = 'block';
+
+        // 填充详情信息（修改为 innerHTML 以允许呈现导演链接）
+        document.getElementById('movie-title').innerText = currentMovie.title;
+        document.getElementById('movie-director').innerHTML = `导演：${currentMovie.director}`;
+        document.getElementById('movie-cast').innerText = `类型：${currentMovie.cast}`;
+        document.getElementById('movie-description').innerText = currentMovie.description;
+        document.getElementById('movie-poster').src = currentMovie.poster;
+
+        // 渲染播放线路/版本按钮
+        const versionBox = document.getElementById('version-btn-group');
+        versionBox.innerHTML = '';
+        currentMovie.sources.forEach((src, idx) => {
+            const btn = document.createElement('button');
+            btn.className = `version-btn ${idx === 0 ? 'active' : ''}`;
+            btn.innerText = src.name;
+            btn.onclick = () => {
+                document.querySelectorAll('.version-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                loadVideo(src.url);
+            };
+            versionBox.appendChild(btn);
+        });
+
+        // 默认加载第一个线路播放
+        loadVideo(currentMovie.sources[0].url);
+    }
+
+    // 加载 DPlayer 视频播放器
+    function loadVideo(url) {
+        if (dp) dp.destroy();
+
+        dp = new DPlayer({
+            container: document.getElementById('player-box'),
+            autoplay: true,
+            theme: '#f0883e',
+            loop: false,
+            lang: 'zh-cn',
+            hotkey: true,
+            preload: 'auto',
+            video: {
+                url: url,
+                type: 'customHls',
+                customType: {
+                    customHls: function (video) {
+                        const hls = new Hls();
+                        hls.loadSource(video.src);
+                        hls.attachMedia(video);
+                    }
+                }
+            }
+        });
+    }
+
+    // 返回目录
+    function showCatalog() {
+        if (dp) dp.destroy();
+        document.getElementById('detail-view').style.display = 'none';
+        document.getElementById('catalog-view').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
